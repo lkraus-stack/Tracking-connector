@@ -115,11 +115,13 @@ export class GoogleMarketingBigQueryClient implements MarketingBigQueryClient {
     return Promise.all(
       viewNames.map(async (viewName) => {
         try {
+          const dateExpression =
+            viewName === "vw_client_connector_health" ? "max(max_data_date)" : "max(date)";
           const [rows] = await this.bigQuery.query({
             query: `
               select
                 count(1) as row_count,
-                cast(max(date) as string) as max_date
+                cast(${dateExpression} as string) as max_date
               from \`${this.projectId}.${this.reportingDataset}.${viewName}\`
             `
           });

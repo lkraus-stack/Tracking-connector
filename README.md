@@ -63,7 +63,7 @@ npm run dev
 
 Admin-App: http://localhost:3000
 
-Ohne Airbyte-, Supabase- oder BigQuery-Credentials läuft die App mit sinnvollen Mocks. Die UI zeigt oben, welche Provider live oder mock sind.
+Ohne Airbyte-, Supabase- oder BigQuery-Credentials läuft die App mit sinnvollen Mocks. Die UI zeigt oben, welche Provider live oder mock sind. Sobald Supabase-Variablen gesetzt sind, liest die Admin-App `clients`, `marketing_accounts`, `airbyte_connector_mappings` und `airbyte_sync_jobs` aus Supabase und schreibt neu gestartete Airbyte-Jobs zurück nach `airbyte_sync_jobs`.
 
 ## Scripts
 
