@@ -121,7 +121,11 @@ select
 from public.airbyte_connector_mappings m
 join public.clients c on c.id = m.client_id
 left join lateral (
-  select *
+  select
+    j.id,
+    j.status,
+    j.ended_at,
+    j.started_at
   from public.airbyte_sync_jobs j
   where j.connection_id = m.airbyte_connection_id
   order by j.started_at desc

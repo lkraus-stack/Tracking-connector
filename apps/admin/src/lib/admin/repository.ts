@@ -107,10 +107,27 @@ async function loadAdminMetadata(): Promise<AdminMetadata> {
 
   try {
     const [clientsResult, accountsResult, connectorsResult, jobsResult] = await Promise.all([
-      supabase.from("clients").select("*").eq("active", true).order("name"),
-      supabase.from("marketing_accounts").select("*").eq("active", true).order("display_name"),
-      supabase.from("airbyte_connector_mappings").select("*").order("airbyte_connection_name"),
-      supabase.from("airbyte_sync_jobs").select("*").order("started_at", { ascending: false }).limit(50)
+      supabase
+        .from("clients")
+        .select("id,name,slug,owner,timezone,monthly_report_day")
+        .eq("active", true)
+        .order("name"),
+      supabase
+        .from("marketing_accounts")
+        .select("id,client_id,platform,external_account_id,display_name,currency")
+        .eq("active", true)
+        .order("display_name"),
+      supabase
+        .from("airbyte_connector_mappings")
+        .select(
+          "id,client_id,marketing_account_id,platform,airbyte_connection_id,airbyte_connection_name,destination_dataset,destination_table,schedule,lookback_days,status,last_sync_at,last_successful_sync_at,next_recommended_sync_at,freshness_hours"
+        )
+        .order("airbyte_connection_name"),
+      supabase
+        .from("airbyte_sync_jobs")
+        .select("id,connection_id,status,job_type,started_at,ended_at,records_committed,bytes_committed,failure_reason")
+        .order("started_at", { ascending: false })
+        .limit(50)
     ]);
 
     for (const result of [clientsResult, accountsResult, connectorsResult, jobsResult]) {

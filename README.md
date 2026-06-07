@@ -176,12 +176,51 @@ In Looker Studio den BigQuery Connector verwenden und bevorzugt diese Views anbi
 - `marketing_reporting.vw_paid_ads_daily` für Drilldowns
 - `marketing_reporting.vw_client_connector_health` für interne Datenqualitätsseiten
 
+## Live-Abnahme Gegen Supermetrics
+
+Die Seite `/validation` ist für die Pilotkunden-Abnahme gedacht. Sie vergleicht Airbyte/BigQuery-Monatswerte mit einem temporär hochgeladenen Supermetrics-CSV und bewertet Abweichungen mit zentralen Thresholds.
+
+Ablauf:
+
+1. Pilotkunde in der Admin-App wählen.
+2. TikTok und Bing Airbyte Sync für den gewünschten Monat ausführen.
+3. BigQuery Mapping in `marketing_reporting.client_account_map` prüfen.
+4. Supermetrics CSV für denselben Monat exportieren.
+5. CSV in der Admin-App unter `/validation` hochladen.
+6. Abweichungen für Spend, Clicks, Impressions, Conversions und Conversion Value prüfen.
+7. Fehler korrigieren, zum Beispiel Account-Mapping, Währungslogik, Zeiträume oder Airbyte Source-Konfiguration.
+8. Einen zweiten Monat prüfen.
+9. Danach entscheiden, ob der Kunde von Supermetrics auf Airbyte/BigQuery/Looker Studio umgestellt werden kann.
+
+Default-Thresholds:
+
+- Spend, Clicks und Impressions: Warnung ab `0,5%`, Fehler ab `1%`
+- Conversions und Conversion Value: Warnung ab `2%`, Fehler ab `5%`
+
+Der CSV Upload wird nur temporär verarbeitet. Ein gespeicherter Validation Run enthält aggregierte Metriken und ein kleines `raw_payload`, aber keine Secrets.
+
+Erwartete CSV-Spalten sind flexibel gemappt:
+
+- `date` oder `month`
+- `platform`
+- `account`
+- `campaign` optional
+- `impressions`
+- `clicks`
+- `cost` oder `spend`
+- `conversions`
+- `conversion_value` oder `revenue`
+
 ## API Der Admin-App
 
 - `GET /api/health`
 - `GET /api/connectors`
 - `GET /api/sync-runs`
 - `POST /api/sync-runs` mit `{ "connectionId": "ab-conn-tiktok-nordstern" }`
+- `GET /api/validation/monthly?clientId=...&platform=...&month=YYYY-MM`
+- `POST /api/validation/supermetrics-csv`
+- `POST /api/validation/run`
+- `GET /api/validation/runs?clientId=...`
 
 ## Package-Funktionen
 

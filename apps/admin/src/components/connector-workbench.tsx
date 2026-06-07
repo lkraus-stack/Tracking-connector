@@ -93,6 +93,9 @@ export function ConnectorWorkbench({ initialData }: ConnectorWorkbenchProps) {
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-stone-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
+            <a className="text-sm text-amber-300 hover:text-amber-200" href="/validation">
+              Validation
+            </a>
             <p className="text-xs font-semibold uppercase tracking-normal text-amber-400">
               Performance Marketing Data Ops
             </p>

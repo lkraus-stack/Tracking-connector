@@ -1,8 +1,12 @@
 import { BigQuery } from "@google-cloud/bigquery";
 import {
+  aggregatePaidAdsRows,
   getLastCompleteMonth,
+  monthToDate,
   type PaidAdsDailyRow,
-  type ReportingViewHealth
+  type ReportingViewHealth,
+  type ValidationPlatform,
+  type ValidationTotals
 } from "@tracking-connector/shared";
 import { mockPaidAdsRows, mockReportingViews } from "@tracking-connector/shared";
 
@@ -28,6 +32,7 @@ export interface MarketingBigQueryClient {
   getPaidAdsDaily(limit?: number): Promise<PaidAdsDailyRow[]>;
   getPaidAdsMonthly(clientId?: string): Promise<PaidAdsDailyRow[]>;
   getLastCompleteMonthSummary(clientId?: string): Promise<PaidAdsDailyRow[]>;
+  getMonthlyValidationSummary(clientId: string, platform: ValidationPlatform, month: string): Promise<ValidationTotals>;
 }
 
 export class MockMarketingBigQueryClient implements MarketingBigQueryClient {
@@ -60,6 +65,18 @@ export class MockMarketingBigQueryClient implements MarketingBigQueryClient {
 
   async getLastCompleteMonthSummary(clientId?: string): Promise<PaidAdsDailyRow[]> {
     return this.getPaidAdsMonthly(clientId);
+  }
+
+  async getMonthlyValidationSummary(
+    clientId: string,
+    platform: ValidationPlatform,
+    month: string
+  ): Promise<ValidationTotals> {
+    return aggregatePaidAdsRows(
+      mockPaidAdsRows.filter((row) => row.clientId === clientId),
+      month,
+      platform
+    );
   }
 }
 
@@ -153,7 +170,21 @@ export class GoogleMarketingBigQueryClient implements MarketingBigQueryClient {
   async getPaidAdsDaily(limit = 100): Promise<PaidAdsDailyRow[]> {
     const [rows] = await this.bigQuery.query({
       query: `
-        select *
+        select
+          cast(date as string) as date,
+          client_id,
+          client_name,
+          platform,
+          account_id,
+          account_name,
+          campaign_id,
+          campaign_name,
+          impressions,
+          clicks,
+          cost,
+          conversions,
+          revenue,
+          currency
         from \`${this.projectId}.${this.reportingDataset}.vw_paid_ads_daily\`
         order by date desc, client_name, platform
         limit @limit
@@ -167,7 +198,21 @@ export class GoogleMarketingBigQueryClient implements MarketingBigQueryClient {
   async getPaidAdsMonthly(clientId?: string): Promise<PaidAdsDailyRow[]> {
     const [rows] = await this.bigQuery.query({
       query: `
-        select *
+        select
+          cast(date as string) as date,
+          client_id,
+          client_name,
+          platform,
+          account_id,
+          account_name,
+          campaign_id,
+          campaign_name,
+          impressions,
+          clicks,
+          cost,
+          conversions,
+          revenue,
+          currency
         from \`${this.projectId}.${this.reportingDataset}.vw_paid_ads_monthly\`
         where @clientId is null or client_id = @clientId
         order by date desc, client_name, platform
@@ -182,7 +227,21 @@ export class GoogleMarketingBigQueryClient implements MarketingBigQueryClient {
     const month = getLastCompleteMonth();
     const [rows] = await this.bigQuery.query({
       query: `
-        select *
+        select
+          cast(date as string) as date,
+          client_id,
+          client_name,
+          platform,
+          account_id,
+          account_name,
+          campaign_id,
+          campaign_name,
+          impressions,
+          clicks,
+          cost,
+          conversions,
+          revenue,
+          currency
         from \`${this.projectId}.${this.reportingDataset}.vw_paid_ads_last_complete_month\`
         where (@clientId is null or client_id = @clientId)
           and date between @startDate and @endDate
@@ -192,6 +251,39 @@ export class GoogleMarketingBigQueryClient implements MarketingBigQueryClient {
     });
 
     return rows.map(normalizePaidAdsRow);
+  }
+
+  async getMonthlyValidationSummary(
+    clientId: string,
+    platform: ValidationPlatform,
+    month: string
+  ): Promise<ValidationTotals> {
+    const reportMonth = monthToDate(month);
+    const platforms = platform === "both" ? ["tiktok", "bing"] : [platform];
+    const [rows] = await this.bigQuery.query({
+      query: `
+        select
+          coalesce(sum(cost), 0) as spend,
+          coalesce(sum(clicks), 0) as clicks,
+          coalesce(sum(impressions), 0) as impressions,
+          coalesce(sum(conversions), 0) as conversions,
+          coalesce(sum(revenue), 0) as conversion_value
+        from \`${this.projectId}.${this.reportingDataset}.vw_paid_ads_monthly\`
+        where client_id = @clientId
+          and platform in unnest(@platforms)
+          and date = @reportMonth
+      `,
+      params: { clientId, platforms, reportMonth }
+    });
+    const row = rows[0] as Record<string, unknown> | undefined;
+
+    return {
+      spend: Number(row?.spend ?? 0),
+      clicks: Number(row?.clicks ?? 0),
+      impressions: Number(row?.impressions ?? 0),
+      conversions: Number(row?.conversions ?? 0),
+      conversionValue: Number(row?.conversion_value ?? 0)
+    };
   }
 }
 

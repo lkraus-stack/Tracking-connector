@@ -61,9 +61,31 @@ bing as (
   from `airbyte_raw._airbyte_raw_bing_campaign_performance_daily`
 ),
 unioned as (
-  select * from tiktok
+  select
+    date,
+    platform,
+    account_id,
+    campaign_id,
+    campaign_name,
+    impressions,
+    clicks,
+    cost,
+    conversions,
+    revenue
+  from tiktok
   union all
-  select * from bing
+  select
+    date,
+    platform,
+    account_id,
+    campaign_id,
+    campaign_name,
+    impressions,
+    clicks,
+    cost,
+    conversions,
+    revenue
+  from bing
 )
 select
   u.date,
@@ -107,7 +129,21 @@ from `marketing_reporting.vw_paid_ads_daily`
 group by 1, 2, 3, 4, 5, 6;
 
 create or replace view `marketing_reporting.vw_paid_ads_last_complete_month` as
-select *
+select
+  date,
+  client_id,
+  client_name,
+  platform,
+  account_id,
+  account_name,
+  campaign_id,
+  campaign_name,
+  impressions,
+  clicks,
+  cost,
+  conversions,
+  revenue,
+  currency
 from `marketing_reporting.vw_paid_ads_monthly`
 where date = date_trunc(date_sub(current_date(), interval 1 month), month);
 
