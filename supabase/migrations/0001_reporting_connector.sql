@@ -1,71 +1,88 @@
-create type public.reporting_destination as enum ('bigquery', 'supabase');
-create type public.reporting_connector_status as enum ('healthy', 'degraded', 'paused', 'failed');
-create type public.reporting_sync_status as enum ('running', 'succeeded', 'warning', 'failed');
-create type public.reporting_schema_drift as enum ('none', 'additive', 'breaking');
-create type public.reporting_check_status as enum ('ok', 'warning', 'error', 'missing');
+create type public.ad_platform as enum ('tiktok', 'bing');
+create type public.connector_runtime_status as enum ('healthy', 'warning', 'failed', 'paused');
+create type public.connector_schedule as enum ('manual', 'daily', 'weekly', 'monthly');
+create type public.airbyte_job_status as enum ('running', 'succeeded', 'failed', 'cancelled', 'incomplete');
 
-create table public.reporting_connectors (
-  id text primary key,
+create table public.clients (
+  id uuid primary key default gen_random_uuid(),
   name text not null,
-  source text not null,
-  destination public.reporting_destination not null,
-  destination_table text not null,
-  status public.reporting_connector_status not null default 'paused',
+  slug text not null unique,
   owner text not null,
-  cadence text not null,
-  last_sync_at timestamptz,
-  next_sync_at timestamptz,
-  sla_minutes integer not null check (sla_minutes > 0),
-  freshness_minutes integer not null default 0 check (freshness_minutes >= 0),
-  records_24h bigint not null default 0 check (records_24h >= 0),
-  error_rate numeric(8, 6) not null default 0 check (error_rate >= 0),
-  latency_ms integer not null default 0 check (latency_ms >= 0),
-  tags text[] not null default '{}',
+  timezone text not null default 'Europe/Berlin',
+  monthly_report_day integer not null default 3 check (monthly_report_day between 1 and 28),
+  active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create table public.reporting_sync_runs (
+create table public.marketing_accounts (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  platform public.ad_platform not null,
+  external_account_id text not null,
+  display_name text not null,
+  currency text not null default 'EUR',
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (platform, external_account_id)
+);
+
+create table public.airbyte_connector_mappings (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  marketing_account_id uuid not null references public.marketing_accounts(id) on delete cascade,
+  platform public.ad_platform not null,
+  airbyte_connection_id text not null unique,
+  airbyte_connection_name text not null,
+  destination_dataset text not null default 'airbyte_raw',
+  destination_table text not null,
+  schedule public.connector_schedule not null default 'monthly',
+  lookback_days integer not null default 45 check (lookback_days >= 0),
+  status public.connector_runtime_status not null default 'paused',
+  last_sync_at timestamptz,
+  last_successful_sync_at timestamptz,
+  next_recommended_sync_at timestamptz,
+  freshness_hours integer not null default 999 check (freshness_hours >= 0),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.airbyte_sync_jobs (
   id text primary key,
-  connector_id text not null references public.reporting_connectors(id) on delete cascade,
-  status public.reporting_sync_status not null,
+  connection_id text not null references public.airbyte_connector_mappings(airbyte_connection_id) on delete cascade,
+  status public.airbyte_job_status not null,
+  job_type text not null default 'sync',
   started_at timestamptz not null,
-  finished_at timestamptz,
-  records_extracted bigint not null default 0 check (records_extracted >= 0),
-  records_loaded bigint not null default 0 check (records_loaded >= 0),
-  bytes_loaded bigint not null default 0 check (bytes_loaded >= 0),
-  message text not null default '',
+  ended_at timestamptz,
+  records_committed bigint not null default 0 check (records_committed >= 0),
+  bytes_committed bigint not null default 0 check (bytes_committed >= 0),
+  failure_reason text,
   created_at timestamptz not null default now()
 );
 
-create table public.reporting_connector_tables (
-  id text primary key,
-  connector_id text not null references public.reporting_connectors(id) on delete cascade,
-  destination public.reporting_destination not null,
-  table_name text not null,
-  row_count bigint not null default 0 check (row_count >= 0),
-  freshness_minutes integer not null default 0 check (freshness_minutes >= 0),
-  schema_drift public.reporting_schema_drift not null default 'none',
-  checksum_status public.reporting_check_status not null default 'ok',
+create table public.connector_status_events (
+  id bigint generated always as identity primary key,
+  connection_id text not null references public.airbyte_connector_mappings(airbyte_connection_id) on delete cascade,
+  status public.connector_runtime_status not null,
+  message text not null,
   observed_at timestamptz not null default now()
 );
 
-create table public.reporting_connector_audit (
-  id bigint generated always as identity primary key,
-  connector_id text not null references public.reporting_connectors(id) on delete cascade,
-  loaded_at timestamptz not null default now(),
-  row_count bigint not null default 0,
-  checksum text,
-  notes text
+create table public.user_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  role text not null default 'viewer' check (role in ('admin', 'operator', 'viewer')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-create index reporting_sync_runs_connector_started_idx
-  on public.reporting_sync_runs (connector_id, started_at desc);
+create index airbyte_connector_mappings_client_idx on public.airbyte_connector_mappings(client_id);
+create index airbyte_sync_jobs_connection_started_idx on public.airbyte_sync_jobs(connection_id, started_at desc);
+create index connector_status_events_connection_observed_idx on public.connector_status_events(connection_id, observed_at desc);
 
-create index reporting_connector_tables_connector_idx
-  on public.reporting_connector_tables (connector_id);
-
-create or replace function public.set_reporting_updated_at()
+create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
 as $$
@@ -75,59 +92,95 @@ begin
 end;
 $$;
 
-create trigger reporting_connectors_updated_at
-before update on public.reporting_connectors
-for each row
-execute function public.set_reporting_updated_at();
+create trigger clients_updated_at before update on public.clients for each row execute function public.set_updated_at();
+create trigger marketing_accounts_updated_at before update on public.marketing_accounts for each row execute function public.set_updated_at();
+create trigger connector_mappings_updated_at before update on public.airbyte_connector_mappings for each row execute function public.set_updated_at();
+create trigger user_profiles_updated_at before update on public.user_profiles for each row execute function public.set_updated_at();
 
-create or replace view public.reporting_connector_health as
+create or replace view public.vw_admin_connector_health as
 select
-  c.id,
-  c.name,
-  c.source,
-  c.destination,
-  c.destination_table,
-  c.status,
-  c.owner,
-  c.freshness_minutes,
-  c.sla_minutes,
+  c.id as client_id,
+  c.name as client_name,
+  m.platform,
+  m.airbyte_connection_id,
+  m.airbyte_connection_name,
+  m.destination_dataset,
+  m.destination_table,
+  m.status,
+  m.freshness_hours,
+  m.last_successful_sync_at,
+  j.id as latest_job_id,
+  j.status as latest_job_status,
+  j.ended_at as latest_job_ended_at,
   case
-    when c.status = 'failed' then 'incident'
-    when c.freshness_minutes > c.sla_minutes then 'late'
-    when c.status = 'degraded' then 'watch'
-    else 'clear'
-  end as operational_state,
-  max(r.finished_at) as latest_finished_at,
-  count(r.id) filter (where r.started_at > now() - interval '24 hours') as runs_24h
-from public.reporting_connectors c
-left join public.reporting_sync_runs r on r.connector_id = c.id
-group by c.id;
+    when m.status = 'failed' then true
+    when m.freshness_hours > 72 then true
+    when j.status = 'failed' then true
+    else false
+  end as needs_attention
+from public.airbyte_connector_mappings m
+join public.clients c on c.id = m.client_id
+left join lateral (
+  select *
+  from public.airbyte_sync_jobs j
+  where j.connection_id = m.airbyte_connection_id
+  order by j.started_at desc
+  limit 1
+) j on true;
 
-alter table public.reporting_connectors enable row level security;
-alter table public.reporting_sync_runs enable row level security;
-alter table public.reporting_connector_tables enable row level security;
-alter table public.reporting_connector_audit enable row level security;
+alter table public.clients enable row level security;
+alter table public.marketing_accounts enable row level security;
+alter table public.airbyte_connector_mappings enable row level security;
+alter table public.airbyte_sync_jobs enable row level security;
+alter table public.connector_status_events enable row level security;
+alter table public.user_profiles enable row level security;
 
-create policy "service role can manage reporting connectors"
-on public.reporting_connectors
-for all
+create policy "authenticated users can read admin metadata"
+on public.clients for select
+to authenticated
+using (true);
+
+create policy "authenticated users can read marketing accounts"
+on public.marketing_accounts for select
+to authenticated
+using (true);
+
+create policy "authenticated users can read connector mappings"
+on public.airbyte_connector_mappings for select
+to authenticated
+using (true);
+
+create policy "authenticated users can read sync jobs"
+on public.airbyte_sync_jobs for select
+to authenticated
+using (true);
+
+create policy "authenticated users can read connector events"
+on public.connector_status_events for select
+to authenticated
+using (true);
+
+create policy "service role can manage clients"
+on public.clients for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy "service role can manage reporting sync runs"
-on public.reporting_sync_runs
-for all
+create policy "service role can manage marketing accounts"
+on public.marketing_accounts for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy "service role can manage reporting tables"
-on public.reporting_connector_tables
-for all
+create policy "service role can manage connector mappings"
+on public.airbyte_connector_mappings for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');
 
-create policy "service role can manage reporting audit"
-on public.reporting_connector_audit
-for all
+create policy "service role can manage sync jobs"
+on public.airbyte_sync_jobs for all
+using (auth.role() = 'service_role')
+with check (auth.role() = 'service_role');
+
+create policy "service role can manage connector events"
+on public.connector_status_events for all
 using (auth.role() = 'service_role')
 with check (auth.role() = 'service_role');

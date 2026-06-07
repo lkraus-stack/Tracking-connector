@@ -1,0 +1,4 @@
+node_modules
+.next
+apps/admin/.next
+package-lock.json

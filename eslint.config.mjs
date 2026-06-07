@@ -5,7 +5,15 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: [".next/**", "node_modules/**", "coverage/**", "dist/**"]
+    ignores: [
+      ".next/**",
+      "apps/admin/.next/**",
+      "node_modules/**",
+      "coverage/**",
+      "dist/**",
+      "next-env.d.ts",
+      "apps/admin/next-env.d.ts"
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -19,6 +27,7 @@ export default tseslint.config(
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs["core-web-vitals"].rules,
       ...reactHooks.configs.recommended.rules,
+      "@next/next/no-html-link-for-pages": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }

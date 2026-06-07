@@ -1,0 +1,17 @@
+{
+  "name": "@tracking-connector/admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "eslint .",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@tracking-connector/airbyte": "0.1.0",
+    "@tracking-connector/bigquery": "0.1.0",
+    "@tracking-connector/shared": "0.1.0"
+  }
+}
