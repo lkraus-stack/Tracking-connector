@@ -7,6 +7,7 @@ import {
   type ManagedConnector
 } from "@tracking-connector/shared";
 import { mockAccounts, mockClients, mockConnectors, mockJobs } from "@tracking-connector/shared";
+import { logger } from "@/lib/logger";
 
 const mutableJobs: AirbyteJob[] = structuredClone(mockJobs);
 
@@ -15,7 +16,10 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const bigQuery = createMarketingBigQueryClient();
 
   const [connections, reportingViews, paidAdsLastCompleteMonth] = await Promise.all([
-    airbyte.listConnections().catch(() => structuredClone(mockConnectors)),
+    airbyte.listConnections().catch((error) => {
+      logger.warn({ error }, "Falling back to mock Airbyte connections");
+      return structuredClone(mockConnectors);
+    }),
     bigQuery.getLookerViewsHealth(),
     bigQuery.getLastCompleteMonthSummary()
   ]);
@@ -25,7 +29,10 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     connectors.map((connector) =>
       airbyte
         .getConnectionHealth(connector.airbyteConnectionId)
-        .catch(() => fallbackHealth(connector))
+        .catch((error) => {
+          logger.warn({ error, connectionId: connector.airbyteConnectionId }, "Falling back to local connector health");
+          return fallbackHealth(connector);
+        })
     )
   );
 
